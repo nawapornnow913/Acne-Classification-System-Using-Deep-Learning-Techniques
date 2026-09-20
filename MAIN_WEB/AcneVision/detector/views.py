@@ -4,12 +4,16 @@ import numpy as np
 import cv2
 import io
 import csv 
+import torch # 🌟 1. เพิ่มโมดูล torch
 from django.conf import settings
 from django.shortcuts import render
 from django.http import JsonResponse
 from ultralytics import YOLO
 from collections import Counter
 from PIL import Image, ImageDraw, ImageFont
+
+# 🌟 2. บังคับให้ PyTorch ประมวลผลแค่ 1 Thread (ป้องกัน RAM ทะลุบน Render)
+torch.set_num_threads(1)
 
 MODEL_PATH = os.path.join(settings.BASE_DIR, 'ml_models', 'best.pt')
 model = YOLO(MODEL_PATH)
@@ -56,10 +60,15 @@ def detect_acne(request):
             format, imgstr = image_b64.split(';base64,') 
             img_data = base64.b64decode(imgstr)
             img_pil_original = Image.open(io.BytesIO(img_data)).convert('RGB')
+            
+            # 🌟 3. บีบอัดรูปก่อนแปลงเป็นอาร์เรย์ (สำคัญมาก ช่วยเซฟ RAM มหาศาล)
+            img_pil_original.thumbnail((640, 640))
+            
             img_np = np.array(img_pil_original)
             img_cv2 = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
-            results = model.predict(source=img_cv2, conf=0.1, save=False, show=False)
+            # 🌟 4. บังคับใช้ CPU และล็อคขนาดการประมวลผลไม่ให้เกิน 640
+            results = model.predict(source=img_cv2, conf=0.1, imgsz=640, device='cpu', save=False, show=False)
             r = results[0]
 
             summary = []
