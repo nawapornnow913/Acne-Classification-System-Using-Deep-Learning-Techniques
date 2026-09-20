@@ -130,3 +130,4 @@ STATIC_URL = '/static/'
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'detector', 'static'),
 ]
+ALLOWED_HOSTS = ['*']
