@@ -1,0 +1,556 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AcneVision - ระบบจำแนกประเภทสิว</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Prompt', 'sans-serif'] },
+                    boxShadow: {
+                        'glass': '0 30px 60px -12px rgba(0, 0, 0, 0.08)',
+                        'inner-soft': 'inset 0 2px 4px 0 rgba(255, 255, 255, 0.4)'
+                    },
+                    animation: {
+                        'fade-in-up': 'fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                    },
+                    keyframes: {
+                        fadeInUp: {
+                            '0%': { opacity: '0', transform: 'translateY(40px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            position: relative;
+            color: #0f172a;
+            overflow: hidden;
+            width: 100vw;
+            height: 100dvh;
+            -webkit-font-smoothing: antialiased;
+            background-color: #fafafa;
+        }
+
+        /* 🌟 ภาพพื้นหลัง .png (Blurred Background Layer) */
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('{% static "web-page-home.png" %}');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            filter: blur(4px);
+            transform: scale(1.05);
+            z-index: -2;
+        }
+
+        /* 🌟 ฟิลเตอร์สีขาวโปร่งแสงคลุมทับภาพพื้นหลังอีกชั้น ให้สว่างมินิมอล */
+        body::after {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.65);
+            z-index: -1;
+        }
+
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 10px;
+        }
+
+        /* Transparent Container (Glassmorphism) */
+        .glass-container {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(25px) saturate(150%);
+            -webkit-backdrop-filter: blur(25px) saturate(150%);
+            border: 1px solid rgba(255, 255, 255, 0.8) !important;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.05);
+        }
+
+        .hover-lift {
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .hover-lift:hover {
+            transform: translateY(-6px) scale(1.01);
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.08);
+        }
+
+        /* Animation เปลี่ยนหน้าต่าง ลื่นไหล */
+        .view-section {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            visibility: hidden;
+            transform: scale(0.96) translateY(15px);
+            transition: all 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .view-section.active {
+            opacity: 1;
+            visibility: visible;
+            transform: scale(1) translateY(0);
+            pointer-events: auto;
+        }
+
+        .banner-text {
+            background: linear-gradient(180deg, #111827 0%, #4b5563 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .loader-ring {
+            width: 70px;
+            height: 70px;
+            border: 3px solid rgba(0, 0, 0, 0.05);
+            border-top-color: #1f2937;
+            border-radius: 50%;
+            animation: spin 1s cubic-bezier(0.6, 0.2, 0.4, 0.8) infinite;
+        }
+
+        @keyframes spin {
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body id="body-container" class="selection:bg-black selection:text-white">
+    {% csrf_token %}
+
+    <!-- Policy Modal -->
+    <div id="policy-modal"
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-white/40 backdrop-blur-xl transition-all duration-700 opacity-100 p-4">
+        <div class="glass-container p-10 rounded-[40px] shadow-glass max-w-md w-full text-center">
+            <h2 class="text-2xl font-extrabold mb-8 tracking-widest uppercase text-gray-900 drop-shadow-sm">Privacy
+                Policy</h2>
+            <div
+                class="space-y-4 mb-8 text-sm text-gray-800 font-medium text-left bg-white/60 p-6 rounded-2xl border border-gray-100 shadow-inner">
+                <p class="flex gap-3 items-start"><span
+                        class="text-gray-900 font-bold min-w-[20px]">01</span><span>ข้อมูลจะถูกประมวลผลบนหน่วยความจำชั่วคราวเท่านั้น</span>
+                </p>
+                <p class="flex gap-3 items-start"><span
+                        class="text-gray-900 font-bold min-w-[20px]">02</span><span><strong
+                            class="text-gray-900 font-bold border-b border-gray-900/40 pb-0.5">ไม่มีการบันทึกภาพ</strong>
+                        ลงในระบบ</span></p>
+                <p class="flex gap-3 items-start"><span
+                        class="text-gray-900 font-bold min-w-[20px]">03</span><span>การคัดกรองเบื้องต้น
+                        ไม่ทดแทนแพทย์ผู้เชี่ยวชาญ</span></p>
+            </div>
+            <label class="flex items-center justify-center gap-3 cursor-pointer mb-6 group">
+                <div class="relative flex items-center justify-center w-6 h-6">
+                    <input type="checkbox" id="policy-checkbox" onchange="toggleAcceptButton()"
+                        class="peer appearance-none w-full h-full bg-white border border-gray-300 rounded-md cursor-pointer checked:bg-gray-900 transition-all shadow-inner">
+                    <svg class="absolute w-4 h-4 text-white pointer-events-none opacity-0 peer-checked:opacity-100 transition-opacity"
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                </div>
+                <span
+                    class="text-sm font-bold tracking-widest text-gray-600 group-hover:text-gray-900 transition-colors">I
+                    ACCEPT</span>
+            </label>
+            <button id="accept-btn" onclick="acceptPolicy()" disabled
+                class="w-full py-4 rounded-2xl font-extrabold text-gray-400 bg-white/70 cursor-not-allowed transition-all duration-300 tracking-widest uppercase border border-gray-200 shadow-sm">Enter</button>
+        </div>
+    </div>
+
+    <!-- Top Navbar -->
+    <nav
+        class="absolute w-full top-0 z-50 px-6 sm:px-8 lg:px-16 py-6 sm:py-8 flex justify-between items-center bg-transparent pointer-events-none">
+        <h1 class="text-xl sm:text-2xl font-extrabold tracking-tighter uppercase flex items-center gap-3 text-gray-900 pointer-events-auto cursor-pointer drop-shadow-sm"
+            onclick="goHome()">
+            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="2" y="2" width="8" height="8" rx="2"></rect>
+                <rect x="14" y="2" width="8" height="8" rx="2"></rect>
+                <rect x="2" y="14" width="8" height="8" rx="2"></rect>
+                <rect x="14" y="14" width="8" height="8" rx="2"></rect>
+            </svg>
+            AcneVision
+        </h1>
+        <div class="flex items-center gap-3 sm:gap-6 pointer-events-auto">
+            <!-- 🌟 เอาปุ่ม Home ออกตามที่คุณขอ เหลือแค่ปุ่ม Contact us -->
+            <button onclick="goProfile()"
+                class="text-xs font-bold tracking-[0.2em] uppercase text-gray-800 hover:text-gray-900 transition-all glass-container px-4 sm:px-6 py-2.5 sm:py-3 rounded-full shadow-sm hover:bg-white/90">Contact
+                us</button>
+        </div>
+    </nav>
+
+    <!-- พื้นที่แสดงผลกลางจอ (Single Page) -->
+    <main class="w-full h-full relative z-10 flex items-center justify-center pt-16">
+
+        <!-- 1. หน้าแบนเนอร์ (Home) -->
+        <div id="home-section" class="view-section active w-full px-6">
+            <div class="text-center w-full max-w-4xl mx-auto animate-fade-in-up">
+                <div
+                    class="inline-flex items-center gap-3 px-6 py-2.5 rounded-full border border-white/40 text-[10px] font-bold tracking-[0.2em] uppercase mb-6 sm:mb-8 bg-white/20 backdrop-blur-xl text-gray-700 shadow-sm">
+                    <span class="w-2 h-2 rounded-full bg-gray-800 animate-pulse"></span>
+                    Deep Learning Diagnostic
+                </div>
+
+                <h2
+                    class="text-4xl sm:text-6xl md:text-7xl lg:text-[90px] font-extrabold tracking-tighter uppercase banner-text mb-6 leading-[1.05] drop-shadow-md">
+                    Acne Vision <br>Skin Analysis
+                </h2>
+                <p
+                    class="text-gray-800 text-sm md:text-base max-w-xl mx-auto font-medium leading-relaxed tracking-wide mb-10 sm:mb-14 bg-white/20 backdrop-blur-xl border border-white/40 p-6 rounded-3xl shadow-sm">
+                    ตรวจจับและแยกประเภทสิวอย่างแม่นยำ ประมวลผลรวดเร็ว ปลอดภัย
+                    สแกน สรุปผล และแนะนำ วิเคราะห์ปัญหาสิวง่ายและตรงจุดผ่านหน้าจอคุณ
+                </p>
+
+                <!-- ปุ่มทำงานหลัก -->
+                <div class="flex flex-col sm:flex-row gap-4 sm:gap-6 w-full max-w-2xl mx-auto justify-center">
+                    <button onclick="document.getElementById('fileInput').click()"
+                        class="hover-lift flex-1 flex flex-col items-center justify-center p-6 sm:p-8 bg-white/10 backdrop-blur-xl border border-white/40 rounded-[32px] sm:rounded-[36px] group text-gray-900 shadow-glass">
+                        <div
+                            class="w-14 h-14 sm:w-16 sm:h-16 bg-white/30 border border-white/50 rounded-2xl flex items-center justify-center mb-3 sm:mb-4 group-hover:scale-110 transition-transform duration-500 shadow-sm backdrop-blur-md">
+                            <svg class="w-7 h-7 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                            </svg>
+                        </div>
+                        <span class="block text-base sm:text-lg font-extrabold tracking-tight uppercase">Upload</span>
+                        <span
+                            class="block text-[10px] text-gray-700 mt-1 tracking-widest uppercase font-semibold">Browse
+                            Image</span>
+                    </button>
+                    <input type="file" id="fileInput" accept="image/*" class="hidden" onchange="uploadImage(event)">
+
+                    <button onclick="requestCamera()"
+                        class="hover-lift flex-1 flex flex-col items-center justify-center p-6 sm:p-8 bg-white/10 backdrop-blur-xl border border-white/40 rounded-[32px] sm:rounded-[36px] group text-gray-900 shadow-glass">
+                        <div
+                            class="w-14 h-14 sm:w-16 sm:h-16 bg-white/30 border border-white/50 rounded-2xl flex items-center justify-center mb-3 sm:mb-4 group-hover:scale-110 transition-transform duration-500 shadow-sm backdrop-blur-md">
+                            <svg class="w-7 h-7 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                    d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                    d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                        </div>
+                        <span class="block text-base sm:text-lg font-extrabold tracking-tight uppercase">Camera</span>
+                        <span class="block text-[10px] text-gray-700 mt-1 tracking-widest uppercase font-semibold">Take
+                            Photo</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. หน้า Profile (Contact us) -->
+        <div id="profile-section" class="view-section px-6">
+            <div
+                class="max-w-md w-full bg-white/10 backdrop-blur-xl border border-white/40 p-8 sm:p-10 rounded-[40px] shadow-glass">
+                <div
+                    class="w-28 h-28 sm:w-32 sm:h-32 mx-auto bg-white/40 rounded-full overflow-hidden mb-6 shadow-md border-4 border-white/80 flex items-center justify-center backdrop-blur-sm">
+                    <img src="{% static 'profile.jpg' %}" alt="Nawaporn Kokaphan" class="w-full h-full object-cover">
+                </div>
+                <h2 class="text-xl sm:text-2xl font-extrabold uppercase tracking-tight text-center text-gray-900 mb-1">
+                    Nawaporn Kokaphan</h2>
+                <p class="text-[10px] font-bold tracking-[0.2em] text-center text-gray-700 mb-6 sm:mb-8">
+                    Email : nawaporn.now13@gmail.com</p>
+
+                <div
+                    class="space-y-4 text-xs sm:text-sm text-gray-800 font-medium text-left bg-white/30 backdrop-blur-md p-6 rounded-3xl border border-white/50">
+                    <p class="flex flex-col gap-1"><strong
+                            class="text-gray-900 uppercase text-[10px] tracking-widest">Major</strong> <span>Information
+                            and Communication Technology (ICT)</span></p>
+                    <div class="h-px w-full bg-gray-400/20"></div>
+                    <p class="flex flex-col gap-1"><strong
+                            class="text-gray-900 uppercase text-[10px] tracking-widest">University</strong> <span>Ubon
+                            Ratchathani University</span></p>
+                    <div class="h-px w-full bg-gray-400/20"></div>
+                    <p class="flex flex-col gap-1"><strong
+                            class="text-gray-900 uppercase text-[10px] tracking-widest">Project</strong>
+                        <span>การพัฒนาระบบจำแนกประเภทสิวบนใบหน้าโดยใช้เทคนิค Deep Learning</span>
+                    </p>
+                </div>
+
+                <div class="mt-8">
+                    <button onclick="goHome()"
+                        class="w-full py-4 bg-gray-900 text-white text-xs font-bold uppercase tracking-widest rounded-2xl hover:bg-gray-800 transition-colors shadow-sm">Return
+                        Home</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. หน้ากล้อง (Scanner) -->
+        <div id="camera-section" class="view-section px-6">
+            <div
+                class="w-full max-w-2xl bg-white/10 backdrop-blur-xl border border-white/40 p-6 sm:p-8 rounded-[40px] shadow-glass text-center">
+                <h3 class="text-sm font-extrabold tracking-[0.2em] uppercase mb-6 text-gray-900">Scanner</h3>
+                <div id="video-container"
+                    class="relative rounded-3xl overflow-hidden bg-black mb-6 w-full h-[320px] sm:h-[400px] flex items-center justify-center border border-white/20">
+                    <video id="video" autoplay playsinline class="w-full h-full object-cover"></video>
+                    <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
+                        <div
+                            class="w-[60%] sm:w-[50%] h-[75%] border-2 border-white/50 rounded-[100px] shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] backdrop-blur-[1px]">
+                        </div>
+                    </div>
+                </div>
+                <div class="flex gap-4">
+                    <button onclick="stopCamera()"
+                        class="flex-1 py-4 bg-white/50 backdrop-blur-md hover:bg-white/80 border border-white/60 text-gray-900 font-bold rounded-2xl transition-all text-xs uppercase tracking-widest">Cancel</button>
+                    <button onclick="takeSnapshot()"
+                        class="flex-1 py-4 bg-gray-900 hover:bg-gray-800 text-white font-bold rounded-2xl transition-all text-xs uppercase tracking-widest shadow-sm">Capture</button>
+                </div>
+                <canvas id="canvas" class="hidden"></canvas>
+            </div>
+        </div>
+
+        <!-- 4. หน้าต่างกำลังโหลด -->
+        <div id="loading-section" class="view-section px-6 text-center">
+            <div
+                class="bg-white/10 backdrop-blur-xl border border-white/40 p-10 sm:p-12 rounded-[40px] shadow-glass flex flex-col items-center">
+                <div class="flex justify-center mb-8">
+                    <div class="loader-ring"></div>
+                </div>
+                <h3 class="text-xl sm:text-2xl font-extrabold tracking-tight uppercase mb-2 text-gray-900">Processing
+                    Data</h3>
+                <p class="text-gray-700 text-xs font-bold tracking-[0.2em] uppercase">Please wait a moment...</p>
+            </div>
+        </div>
+
+        <!-- 5. หน้าต่างแสดงผลลัพธ์ -->
+        <div id="result-section" class="view-section px-6">
+            <div
+                class="w-full max-w-4xl bg-white/10 backdrop-blur-xl border border-white/40 rounded-[40px] shadow-glass overflow-hidden flex flex-col max-h-[85vh]">
+                <div
+                    class="px-6 sm:px-8 py-4 sm:py-6 flex justify-between items-center border-b border-white/30 shrink-0">
+                    <h3 class="text-xs sm:text-sm font-extrabold tracking-[0.2em] uppercase text-gray-900">Analysis
+                        Report</h3>
+                    <button onclick="goHome()"
+                        class="text-[10px] font-bold text-gray-900 bg-white/50 backdrop-blur-md hover:bg-white/80 border border-white/60 px-4 sm:px-6 py-2.5 sm:py-3 rounded-full uppercase tracking-widest transition-all shadow-sm">Restart</button>
+                </div>
+
+                <div class="flex flex-col md:flex-row overflow-hidden flex-1">
+                    <div
+                        class="w-full md:w-5/12 p-6 sm:p-8 flex flex-col items-center justify-center shrink-0 border-b md:border-b-0 md:border-r border-white/30">
+                        <div class="w-full relative cursor-zoom-in group bg-white/20 rounded-3xl p-2 shadow-sm backdrop-blur-md border border-white/40"
+                            onclick="openImageModal()">
+                            <img id="result-image" src="" alt="Result"
+                                class="max-w-full max-h-full object-contain rounded-2xl transition-opacity group-hover:opacity-75">
+                            <div
+                                class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div class="bg-gray-900/80 p-4 rounded-full text-white backdrop-blur-md">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7">
+                                        </path>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="text-[10px] text-gray-700 mt-4 sm:mt-6 tracking-[0.2em] uppercase font-bold">Click to
+                            expand</p>
+                    </div>
+
+                    <div class="w-full md:w-7/12 p-6 sm:p-8 overflow-y-auto">
+                        <div id="result-summary" class="space-y-4"></div>
+                        <p class="text-[9px] font-bold text-gray-600 uppercase tracking-[0.2em] text-center mt-8 pb-4">*
+                            For screening purposes only.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Modal ขยายรูป -->
+    <div id="image-modal"
+        class="fixed inset-0 z-[110] hidden bg-white/40 backdrop-blur-xl flex items-center justify-center transition-opacity duration-500 opacity-0 p-6 sm:p-10">
+        <button onclick="closeImageModal()"
+            class="absolute top-6 right-6 sm:top-8 sm:right-8 text-gray-900 bg-white/60 backdrop-blur-md hover:bg-white border border-white/80 rounded-full p-3 sm:p-4 z-50 transition-all shadow-sm">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+        </button>
+        <div class="w-full h-full flex items-center justify-center" onclick="closeModalIfClickOutside(event)">
+            <img id="full-size-image" src="" alt="Full Result"
+                class="max-w-none max-h-full object-contain cursor-zoom-in transition-transform duration-500 rounded-[32px] sm:rounded-[40px] shadow-glass bg-white/30 backdrop-blur-md p-2 border border-white/50"
+                style="transform: scale(1);" onclick="toggleZoom(this, event)">
+        </div>
+    </div>
+
+    <!-- Script ควบคุมการทำงาน -->
+    <script>
+        const sections = ['home-section', 'profile-section', 'camera-section', 'loading-section', 'result-section'];
+
+        function switchSection(targetId) {
+            sections.forEach(id => {
+                const el = document.getElementById(id);
+                if (id === targetId) {
+                    el.classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                }
+            });
+        }
+
+        function goHome() {
+            switchSection('home-section');
+            document.getElementById('fileInput').value = "";
+        }
+
+        function goProfile() {
+            switchSection('profile-section');
+        }
+
+        function toggleAcceptButton() {
+            const cb = document.getElementById('policy-checkbox');
+            const btn = document.getElementById('accept-btn');
+            if (cb.checked) {
+                btn.disabled = false;
+                btn.classList.remove('bg-white/70', 'text-gray-400', 'cursor-not-allowed');
+                btn.classList.add('bg-white', 'text-gray-900', 'hover:bg-gray-100', 'shadow-button');
+            } else {
+                btn.disabled = true;
+                btn.classList.add('bg-white/70', 'text-gray-400', 'cursor-not-allowed');
+                btn.classList.remove('bg-white', 'text-gray-900', 'hover:bg-gray-100', 'shadow-button');
+            }
+        }
+
+        function acceptPolicy() {
+            const modal = document.getElementById('policy-modal');
+            modal.classList.remove('opacity-100');
+            modal.classList.add('opacity-0', 'pointer-events-none');
+            setTimeout(() => { modal.classList.add('hidden'); }, 700);
+        }
+
+        let currentImageZoom = 1;
+        function openImageModal() {
+            const modal = document.getElementById('image-modal');
+            const fullImg = document.getElementById('full-size-image');
+            fullImg.src = document.getElementById('result-image').src;
+            currentImageZoom = 1;
+            fullImg.style.transform = `scale(${currentImageZoom})`;
+            fullImg.classList.replace('cursor-zoom-out', 'cursor-zoom-in');
+
+            modal.classList.remove('hidden');
+            setTimeout(() => { modal.classList.replace('opacity-0', 'opacity-100'); }, 50);
+        }
+
+        function closeImageModal() {
+            const modal = document.getElementById('image-modal');
+            modal.classList.replace('opacity-100', 'opacity-0');
+            setTimeout(() => { modal.classList.add('hidden'); }, 500);
+        }
+
+        function toggleZoom(img, e) {
+            e.stopPropagation();
+            if (currentImageZoom === 1) {
+                currentImageZoom = 1.8;
+                img.style.transform = `scale(${currentImageZoom})`;
+                img.classList.replace('cursor-zoom-in', 'cursor-zoom-out');
+            } else {
+                currentImageZoom = 1;
+                img.style.transform = `scale(${currentImageZoom})`;
+                img.classList.replace('cursor-zoom-out', 'cursor-zoom-in');
+            }
+        }
+
+        function closeModalIfClickOutside(e) {
+            if (e.target.id !== 'full-size-image') closeImageModal();
+        }
+
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        let stream = null;
+
+        async function requestCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+                video.srcObject = stream;
+                switchSection('camera-section');
+            } catch (err) {
+                alert("Please allow camera access.");
+            }
+        }
+
+        function stopCamera() {
+            if (stream) stream.getTracks().forEach(track => track.stop());
+            goHome();
+        }
+
+        function takeSnapshot() {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            let b64 = canvas.toDataURL('image/jpeg');
+            stopCamera();
+            sendToServer(b64);
+        }
+
+        function uploadImage(e) {
+            const f = e.target.files[0];
+            if (f) {
+                const r = new FileReader();
+                r.onload = function (ev) { sendToServer(ev.target.result); };
+                r.readAsDataURL(f);
+            }
+        }
+
+        function sendToServer(b64) {
+            switchSection('loading-section');
+            const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            const params = new URLSearchParams();
+            params.append('image', b64);
+
+            fetch('/detect/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrf },
+                body: params.toString()
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('result-image').src = data.image;
+                        document.getElementById('result-summary').innerHTML = data.summary.join("");
+                        setTimeout(() => { switchSection('result-section'); }, 800);
+                    } else {
+                        alert("Error: " + data.error);
+                        goHome();
+                    }
+                }).catch(e => {
+                    alert("Connection failed.");
+                    goHome();
+                });
+        }
+    </script>
+</body>
+
+</html>
